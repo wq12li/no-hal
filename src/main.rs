@@ -6,6 +6,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> ! {
+    loop {}
 }
