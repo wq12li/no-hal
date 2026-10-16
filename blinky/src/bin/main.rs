@@ -12,7 +12,6 @@ use core::mem::swap;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant};
 use log::info;
 
 const GPIO_BASE: usize = 0x6000_4000;
@@ -100,8 +99,6 @@ unsafe fn read_unit0_count() -> u64 {
     // man why is the clock stuff so arcane
 
     // Section 10.5
-    const CHANNEL: usize = 0;
-
     const SYSTIMER_TIMER_UNIT0_OP_REG: usize = SYSTIMER_BASE + 0x04;
     let reg = SYSTIMER_TIMER_UNIT0_OP_REG as *mut u32;
 
