@@ -7,6 +7,8 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+use core::mem::swap;
+
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::main;
@@ -15,6 +17,7 @@ use log::info;
 
 const GPIO_BASE: usize = 0x6000_4000;
 const IO_MUX_BASE: usize = 0x6000_9000;
+const SYSTIMER_BASE: usize = 0x6002_3000;
 
 const OUT_REG: usize = 0x04;
 const OUT_W1TS: usize = 0x08;
@@ -65,15 +68,61 @@ fn main() -> ! {
 
     loop {
         info!("Hello world!");
-        unsafe { set_high(led); }
-        let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_millis(500) {}
-
-        unsafe { set_low(led); }
-        let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_millis(500) {}
+        unsafe {
+            set_high(led);
+            delay_ticks(1_000_000 * 8);
+            set_low(led);
+            delay_ticks(1_000_000 * 8);
+        }
     }
 
+}
+
+
+// This is slightly more hairy than expected because the
+// counter might wrap around.
+// Not sure if this is really as robust as the HAL version.
+unsafe fn delay_ticks(ticks: u64) {
+    let mut start = unsafe { read_unit0_count() };
+    let mut end = start.wrapping_add(ticks);
+
+    if end > start { swap(&mut start, &mut end);}
+
+    loop {
+        let current = unsafe { read_unit0_count() };
+        if current >= end {
+            return;
+        }
+    }
+}
+
+unsafe fn read_unit0_count() -> u64 {
+    // man why is the clock stuff so arcane
+
+    // Section 10.5
+    const CHANNEL: usize = 0;
+
+    const SYSTIMER_TIMER_UNIT0_OP_REG: usize = SYSTIMER_BASE + 0x04;
+    let reg = SYSTIMER_TIMER_UNIT0_OP_REG as *mut u32;
+
+    // "update": reads count into VALUE_HI and VALUE_LO
+    unsafe { reg.write_volatile(1 << 30); }
+
+    // "valid": poll until true, meaning the update finished
+    loop {
+        let valid = unsafe { reg.read_volatile() & (1 << 29) != 0 };
+        if valid { break; }
+    }
+    
+    // NOTE: The HAL accomodates for an edge case here where an interrupt happens
+    // between reading hi and lo, but lazy.
+    let hi = (SYSTIMER_BASE + 0x40) as *mut u32;
+    let lo = (SYSTIMER_BASE + 0x44) as *mut u32;
+
+    let hi = unsafe { hi.read_volatile() };
+    let lo = unsafe { lo.read_volatile() };
+
+    (hi as u64) << 32 | lo as u64
 }
 
 unsafe fn set_enable(gpio: usize) {
@@ -86,7 +135,7 @@ unsafe fn set_enable(gpio: usize) {
 // Probably unnecessary, because it looks like 0 is the default?
 unsafe fn pad_driver(gpio: usize) {
     let reg = (GPIO_BASE + 0x74 + 4 * gpio) as *mut u32;
-    unsafe {reg.write_volatile(0);}
+    unsafe { reg.write_volatile(0); }
 }
 
 unsafe fn init_io_mux(gpio: usize) {
