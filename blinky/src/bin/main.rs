@@ -66,7 +66,6 @@ fn main() -> ! {
     }
 
     loop {
-        info!("Hello world!");
         unsafe {
             set_high(led);
             delay_ticks(1_000_000 * 8);
@@ -85,7 +84,7 @@ unsafe fn delay_ticks(ticks: u64) {
     let mut start = unsafe { read_unit0_count() };
     let mut end = start.wrapping_add(ticks);
 
-    if end > start { swap(&mut start, &mut end);}
+    if start > end { swap(&mut start, &mut end);}
 
     loop {
         let current = unsafe { read_unit0_count() };
