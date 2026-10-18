@@ -76,6 +76,18 @@ fn main() -> ! {
 
 }
 
+unsafe fn init() {
+    // Skipping some stuff here from the HAL; presumably it's to be more generic
+    // but they don't seem relevant to the esp32c3.
+    // - pre_init() call; is empty for esp32c3
+    // - branch predictor init
+    // - something about making sure the stack pointer is in range?
+    //   - don't quite understand this one but it seems more like an assertion than a thing that does something
+    // - stack guard monitoring
+    //   - sets a breakpoint, apparently
+    // 
+}
+
 
 // This is slightly more hairy than expected because the
 // counter might wrap around.
