@@ -726,6 +726,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "hd44780-driver"
+version = "0.4.0"
+source = "git+https://github.com/JohnDoneth/hd44780-driver?rev=9009f2c24771ba0a20f8f7534471c9869188f76c#9009f2c24771ba0a20f8f7534471c9869188f76c"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+]
+
+[[package]]
 name = "heapless"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1061,6 +1070,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shtcx"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c25d66e6c78c6e19160a5b528cebe6f54d5737f091a2b90b08dbd7e63a9269f"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "somni-expr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1137,6 +1155,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "thermo"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "esp-backtrace",
+ "esp-bootloader-esp-idf",
+ "esp-hal",
+ "esp-println",
+ "hd44780-driver",
+ "heapless 0.9.3",
+ "log",
+ "shtcx",
 ]
 
 [[package]]
