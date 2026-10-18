@@ -23,3 +23,5 @@ esp-backtrace = { version = "0.19.0", features = [
 ] }
 esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
 esp32c3 = { version = "0.34.0", features = ["critical-section"] }
+
+wonky_hal = { path = "../wonky_hal" }

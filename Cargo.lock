@@ -51,6 +51,7 @@ dependencies = [
  "esp-println",
  "esp32c3 0.34.0",
  "log",
+ "wonky_hal",
 ]
 
 [[package]]
@@ -1296,6 +1297,10 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "wonky_hal"
+version = "0.1.0"
 
 [[package]]
 name = "xtensa-lx"
