@@ -39,6 +39,11 @@ pub unsafe fn delay_ticks(ticks: u64) {
     }
 }
 
+// According to 10.3, average frequency is 16 MHz, so each tick is 1/16 us.
+pub unsafe fn delay_us(us: u64) {
+    unsafe { delay_ticks(us * 16) };
+}
+
 pub unsafe fn read_unit0_count() -> u64 {
     // man why is the clock stuff so arcane
 

@@ -13,7 +13,6 @@ use esp_hal::delay::Delay;
 use esp_hal::main;
 use esp_hal::time::{Duration, Instant, Rate};
 use log::{info, error};
-use shtcx;
 
 use esp_hal::gpio::{Output, OutputConfig, Level};
 use hd44780_driver::bus::FourBitBusPins;
@@ -22,6 +21,7 @@ use hd44780_driver::memory_map::MemoryMap1602;
 use hd44780_driver::setup::DisplayOptions4Bit;
 
 use heapless::String;
+use wonky_hal::delay_us;
 use core::fmt::Write;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -80,44 +80,60 @@ fn main() -> ! {
         }
     };
 
-    let mut sht = {
-        let i2c_bus = esp_hal::i2c::master::I2c::new(
-            peripherals.I2C0, 
-            esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
-        .unwrap()
-        .with_scl(peripherals.GPIO8)
-        .with_sda(peripherals.GPIO7);
-        
-        shtcx::shtc3(i2c_bus)
-    };
+    let mut i2c_bus = esp_hal::i2c::master::I2c::new(
+        peripherals.I2C0, 
+        esp_hal::i2c::master::Config::default().with_frequency(Rate::from_khz(400)))
+    .unwrap()
+    .with_scl(peripherals.GPIO8)
+    .with_sda(peripherals.GPIO7);
 
-    {
-        let device_id = sht.device_identifier().unwrap();
-        let raw_id = sht.raw_id_register().unwrap();
-    
-        info!("device id: {}", device_id);
-        info!("raw id: {}", raw_id);
-    }
+    // (from section 5.1)
+    const SHTC3_I2C_ADDRESS: u8 = 0x70;
+
+    // Assume clock stretching is disabled and temperature is measured first (section 5.3).
+    const SHTC3_READ_COMMAND: [u8; 2] = [0x78, 0x66];
+
+    // (section 5.2)
+    const SHTC3_SLEEP_COMMAND: [u8; 2] = [0xB0, 0x98];
+    const SHTC3_WAKEUP_COMMAND: [u8; 2] = [0x35, 0x17];
+
+    // Maximum power up time is 240 microseconds (section 3.1).
+    const T_PU: u64 = 240;
+
+    // Maximum measurement duration is 12.1 milliseconds (section 3.1).
+    const T_MEAS: u64 = 12100;
 
     loop {
         display.clear(&mut delay).unwrap();
         display.reset(&mut delay).unwrap();
+        
+        i2c_bus.write(SHTC3_I2C_ADDRESS, &SHTC3_READ_COMMAND).unwrap();
+        unsafe { delay_us(T_MEAS); }
 
-        let measurement = sht.measure(shtcx::PowerMode::NormalMode, &mut delay).unwrap();
+        // A read produces six bytes of info (section 5.6).
+        // First two bytes are temperature, third is CRC; 4/5 are humidity, 6th is CRC.
+        // (assuming temperature is measured first)
+        let mut buf = [0; 6];
+        i2c_bus.read(SHTC3_I2C_ADDRESS, &mut buf).unwrap();
 
+        // Ignore the CRC check for simplicity.
+        // Convert output based on formulas in 5.11.
+        let temp = u16::from_be_bytes([buf[0], buf[1]]);
+        let hum = u16::from_be_bytes([buf[3], buf[4]]);
+
+        let temp = temp as f32 * 175.0 / (1 << 16) as f32 - 45.0;
+        let hum = hum as f32 * 100.0 / (1 << 16) as f32;
+        
         let mut s: String<128> = String::new();
-        write!(&mut s, "Temp.: {} F",
-            measurement.temperature.as_degrees_celsius() * 9.0 / 5.0 + 32.0)
-        .unwrap();
+        write!(&mut s, "Temp.: {:.1} C", temp).unwrap();
         display.write_str(&s, &mut delay).unwrap();
         
         display.set_cursor_xy((0,1), &mut delay).unwrap();
         let mut s: String<128> = String::new();
-        write!(&mut s, "Humd.: {}%", measurement.humidity.as_percent()).unwrap();
+        write!(&mut s, "Humd.: {:.1}%", hum).unwrap();
         display.write_str(&s, &mut delay).unwrap();
 
-        let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_millis(1000) {}
+        unsafe { delay_us(1_000_000); }
     }
 
 }

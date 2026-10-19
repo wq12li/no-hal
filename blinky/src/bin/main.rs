@@ -45,9 +45,9 @@ fn main() -> ! {
     loop {
         unsafe {
             set_high(led);
-            delay_ticks(1_000_000 * 8);
+            delay_us(500_000);
             set_low(led);
-            delay_ticks(1_000_000 * 8);
+            delay_us(500_000);
         }
     }
 
