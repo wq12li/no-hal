@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["blinky", "thermo", "wonky_hal"]
+members = ["blinky", "thermo", "fader", "wonky_hal"]
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]

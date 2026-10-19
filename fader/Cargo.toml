@@ -1,0 +1,19 @@
+[package]
+edition      = "2024"
+name         = "fader"
+rust-version = "1.88"
+version      = "0.1.0"
+
+[[bin]]
+name = "fader"
+path = "./src/bin/main.rs"
+
+[dependencies]
+esp-hal = { version = "~1.1.0", features = ["esp32c3", "unstable"] }
+
+
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
+
+critical-section = "1.2.0"
+
+wonky_hal = { path = "../wonky_hal" }
