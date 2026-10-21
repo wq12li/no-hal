@@ -11,8 +11,8 @@ use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant, Rate};
-use log::{info, error};
+use esp_hal::time::Rate;
+use log::{error};
 
 use esp_hal::gpio::{Output, OutputConfig, Level};
 use hd44780_driver::bus::FourBitBusPins;
@@ -93,12 +93,12 @@ fn main() -> ! {
     // Assume clock stretching is disabled and temperature is measured first (section 5.3).
     const SHTC3_READ_COMMAND: [u8; 2] = [0x78, 0x66];
 
-    // (section 5.2)
-    const SHTC3_SLEEP_COMMAND: [u8; 2] = [0xB0, 0x98];
-    const SHTC3_WAKEUP_COMMAND: [u8; 2] = [0x35, 0x17];
+    // // (section 5.2)
+    // const SHTC3_SLEEP_COMMAND: [u8; 2] = [0xB0, 0x98];
+    // const SHTC3_WAKEUP_COMMAND: [u8; 2] = [0x35, 0x17];
 
-    // Maximum power up time is 240 microseconds (section 3.1).
-    const T_PU: u64 = 240;
+    // // Maximum power up time is 240 microseconds (section 3.1).
+    // const T_PU: u64 = 240;
 
     // Maximum measurement duration is 12.1 milliseconds (section 3.1).
     const T_MEAS: u64 = 12100;
