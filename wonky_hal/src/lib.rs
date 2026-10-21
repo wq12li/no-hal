@@ -1,14 +1,43 @@
 #![no_std]
 
+// GPIO register block.
 const GPIO_BASE: usize = 0x6000_4000;
+    const GPIO_OUT_REG: usize = 0x04;
+    const GPIO_OUT_W1TS: usize = 0x08;
+    const GPIO_OUT_W1TC: usize = 0x0C;
+    const GPIO_ENABLE_W1TS: usize = 0x24;
+
+// IO mux register block.
 const IO_MUX_BASE: usize = 0x6000_9000;
+
+// System timer register block.
 const SYSTIMER_BASE: usize = 0x6002_3000;
 
-const OUT_REG: usize = 0x04;
-const OUT_W1TS: usize = 0x08;
-const OUT_W1TC: usize = 0x0C;
+// System register block.
+const SYSTEM_BASE: usize = 0x600C_0000;
+    const SYSTEM_PERIP_CLK_EN0_REG: usize = 0x10;
+        const SYSTEM_LEDC_CLK_EN: usize = 11; // Bit index.
 
-const ENABLE_W1TS: usize = 0x24;
+    const SYSTEM_PERIP_RST_EN0_REG: usize = 0x18;
+        const SYSTEM_LEDC_RST: usize = 11; // Bit index.
+
+pub unsafe fn ledc_init() {
+    // "Before using any of these peripherals, it is mandatory to enable the clock for the given peripheral and
+    // release the peripheral from reset state"
+    //
+    //   - 16.3.5, pg 430
+
+    // Set enable.
+    let reg = (SYSTEM_BASE + SYSTEM_PERIP_CLK_EN0_REG) as *mut u32;
+    let current = unsafe { reg.read_volatile() };
+    unsafe { reg.write_volatile(current | ( 1 << SYSTEM_LEDC_CLK_EN )); }
+
+    // Reset: Turn bit on then off.
+    let reg = (SYSTEM_BASE + SYSTEM_PERIP_RST_EN0_REG) as *mut u32;
+    let current = unsafe { reg.read_volatile() };
+    unsafe { reg.write_volatile(current | ( 1 << SYSTEM_LEDC_RST )); }
+    unsafe { reg.write_volatile(current & !( 1 << SYSTEM_LEDC_RST )); }
+}
 
 pub unsafe fn init() {
     // Skipping some stuff here from the HAL; presumably it's to be more generic
@@ -74,7 +103,7 @@ pub unsafe fn read_unit0_count() -> u64 {
 pub unsafe fn set_enable(gpio: usize) {
     // Normally configuring GPIO_FUNCx_OUT_SEL_CFG_REG might be needed here,
     // but not for "simple GPIO output" (5.5.3).
-    let reg = (GPIO_BASE + ENABLE_W1TS) as *mut u32;
+    let reg = (GPIO_BASE + GPIO_ENABLE_W1TS) as *mut u32;
     unsafe { reg.write_volatile(1 << gpio); }
 }
 
@@ -106,16 +135,16 @@ pub unsafe fn init_io_mux(gpio: usize) {
 }
 
 pub unsafe fn read_gpio(gpio: usize) -> bool {
-    let out = (GPIO_BASE + OUT_REG) as *mut u32;
+    let out = (GPIO_BASE + GPIO_OUT_REG) as *mut u32;
     unsafe { out.read_volatile() & (1 << gpio) != 0 }
 }
 
 pub unsafe fn set_high(gpio: usize) {
-    let w1ts = (GPIO_BASE + OUT_W1TS) as *mut u32;
+    let w1ts = (GPIO_BASE + GPIO_OUT_W1TS) as *mut u32;
     unsafe { w1ts.write_volatile(1 << gpio); }
 }
 
 pub unsafe fn set_low(gpio: usize) {
-    let w1tc = (GPIO_BASE + OUT_W1TC) as *mut u32;
+    let w1tc = (GPIO_BASE + GPIO_OUT_W1TC) as *mut u32;
     unsafe { w1tc.write_volatile(1 << gpio); }
 }
