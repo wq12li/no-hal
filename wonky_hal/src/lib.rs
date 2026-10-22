@@ -10,6 +10,19 @@ const GPIO_BASE: usize = 0x6000_4000;
 // IO mux register block.
 const IO_MUX_BASE: usize = 0x6000_9000;
 
+// LED PWM controller register block.
+const LED_PWM_BASE: usize = 0x6001_9000;
+    const LEDC_TIMER0_CONF_REG: usize = 0xA0;
+        const LEDC_TIMER0_DUTY_RES: usize = 0;
+        const LEDC_CLK_DIV_TIMER0: usize = 4;
+        const LEDC_TIMER0_PAUSE: usize = 22;
+        const LEDC_TIMER0_RST: usize = 23;
+        const LEDC_TIMER0_PARA_UP: usize = 25;
+    const LEDC_CH0_CONF0_REG: usize = 0x00;
+    const LEDC_CH0_CONF1_REG: usize = 0x0C;
+    const LEDC_CONF_REG: usize = 0xD0;
+        // const LEDC_APB_CLK_SEL: usize = 0;
+
 // System timer register block.
 const SYSTIMER_BASE: usize = 0x6002_3000;
 
@@ -21,7 +34,8 @@ const SYSTEM_BASE: usize = 0x600C_0000;
     const SYSTEM_PERIP_RST_EN0_REG: usize = 0x18;
         const SYSTEM_LEDC_RST: usize = 11; // Bit index.
 
-pub unsafe fn ledc_init() {
+
+pub unsafe fn ledc_init(divisor: u32, duty: u32) {
     // "Before using any of these peripherals, it is mandatory to enable the clock for the given peripheral and
     // release the peripheral from reset state"
     //
@@ -37,6 +51,21 @@ pub unsafe fn ledc_init() {
     let current = unsafe { reg.read_volatile() };
     unsafe { reg.write_volatile(current | ( 1 << SYSTEM_LEDC_RST )); }
     unsafe { reg.write_volatile(current & !( 1 << SYSTEM_LEDC_RST )); }
+
+    // Set clock source signal to APB_CLK.
+    let reg = (LED_PWM_BASE + LEDC_CONF_REG) as *mut u32;
+    unsafe { reg.write_volatile(1); }
+
+    // Configure Timer0.
+    let reg = (LED_PWM_BASE + LEDC_TIMER0_CONF_REG) as *mut u32;
+    let val =
+        1 << LEDC_TIMER0_PARA_UP
+        | 0 << LEDC_TIMER0_RST
+        | 0 << LEDC_TIMER0_PAUSE
+        | divisor << LEDC_CLK_DIV_TIMER0
+        | duty << LEDC_TIMER0_DUTY_RES;
+    unsafe { reg.write_volatile(val); }
+
 }
 
 pub unsafe fn init() {
