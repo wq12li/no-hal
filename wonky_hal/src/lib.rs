@@ -19,9 +19,19 @@ const LED_PWM_BASE: usize = 0x6001_9000;
         const LEDC_TIMER0_RST: usize = 23;
         const LEDC_TIMER0_PARA_UP: usize = 25;
     const LEDC_CH0_CONF0_REG: usize = 0x00;
+        const LEDC_TIMER_SEL_CH0: usize = 0;
+        const LEDC_SIG_OUT_EN_CH0: usize = 2;
+        const LEDC_PARA_UP_CH0: usize = 4;
     const LEDC_CH0_CONF1_REG: usize = 0x0C;
+        const LEDC_DUTY_SCALE_CH0: usize = 0;
+        const LEDC_DUTY_CYCLE_CH0: usize = 10;
+        const LEDC_DUTY_NUM_CH0: usize = 20;
+        const LEDC_DUTY_INC_CH0: usize = 30;
+        const LEDC_DUTY_START_CH0: usize = 31;
     const LEDC_CONF_REG: usize = 0xD0;
         // const LEDC_APB_CLK_SEL: usize = 0;
+    const LEDC_CH0_HPOINT_REG: usize = 0x04; 
+    const LEDC_DUTY_CH0: usize = 0x08; 
 
 // System timer register block.
 const SYSTIMER_BASE: usize = 0x6002_3000;
@@ -35,7 +45,8 @@ const SYSTEM_BASE: usize = 0x600C_0000;
         const SYSTEM_LEDC_RST: usize = 11; // Bit index.
 
 
-pub unsafe fn ledc_init(divisor: u32, duty: u32) {
+// Uses Timer0 and PWM channel 0.
+pub unsafe fn led_pwm_init(divisor: u32, duty_res: u32, duty: u32) {
     // "Before using any of these peripherals, it is mandatory to enable the clock for the given peripheral and
     // release the peripheral from reset state"
     //
@@ -63,8 +74,39 @@ pub unsafe fn ledc_init(divisor: u32, duty: u32) {
         | 0 << LEDC_TIMER0_RST
         | 0 << LEDC_TIMER0_PAUSE
         | divisor << LEDC_CLK_DIV_TIMER0
-        | duty << LEDC_TIMER0_DUTY_RES;
+        | duty_res << LEDC_TIMER0_DUTY_RES;
     unsafe { reg.write_volatile(val); }
+
+    // Configure PWM0.
+    {
+        // The HAL sets HPOINT to 0 I guess.
+        let reg = (LED_PWM_BASE + LEDC_CH0_HPOINT_REG) as *mut u32;
+        unsafe { reg.write_volatile(0); }
+        
+        // Shift by 4 because the low 3 bits are for fractional values.
+        let reg = (LED_PWM_BASE + LEDC_DUTY_CH0) as *mut u32;
+        unsafe { reg.write_volatile(duty << 4); }
+
+        // Refer to "start_duty_without_fading" from HAL.
+        let reg = (LED_PWM_BASE + LEDC_CH0_CONF1_REG) as *mut u32;
+        let val =
+            1 << LEDC_DUTY_START_CH0
+            | 1 << LEDC_DUTY_INC_CH0
+            | 1 << LEDC_DUTY_NUM_CH0
+            | 1 << LEDC_DUTY_CYCLE_CH0
+            | 0 << LEDC_DUTY_SCALE_CH0;
+        unsafe { reg.write_volatile(val); }
+
+        let reg = (LED_PWM_BASE + LEDC_CH0_CONF0_REG) as *mut u32;
+        let val =
+            0 << LEDC_TIMER_SEL_CH0     // Set to Timer0.
+            | 1 << LEDC_SIG_OUT_EN_CH0  // Enable output signal. Need to connect to GPIO...
+            | 1 << LEDC_PARA_UP_CH0;    // This bit updates most things in HPOINT, CONF0/1, and DUTY.
+        unsafe { reg.write_volatile(val); }
+
+        // TODO: Connect PWM channel to output pin.
+
+    }
 
 }
 
