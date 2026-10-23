@@ -9,20 +9,13 @@
 
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::DriveMode;
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant, Rate};
-// use log::info;
-
-use esp_hal::ledc::LSGlobalClkSource;
-use esp_hal::ledc::channel::ChannelIFace;
-use esp_hal::ledc::timer::TimerIFace;
-use esp_hal::ledc::{Ledc, LowSpeed, channel, timer};
 
 use song::{
     music::{self, Song},
     pink_panther,
 };
+use wonky_hal::*;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -56,10 +49,7 @@ fn main() -> ! {
     let _ = peripherals.GPIO16;
     let _ = peripherals.GPIO17;
 
-    let mut buzzer = peripherals.GPIO7;
-    let mut ledc = Ledc::new(peripherals.LEDC);
-
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+    let buzzer = 7;
 
     let song = Song::new(pink_panther::TEMPO);
 
@@ -67,36 +57,25 @@ fn main() -> ! {
         let note_duration = song.calc_note_duration(duration_type) as u64;
         let pause_duration = note_duration / 10;
         if note == music::REST {
-            blocking_delay(Duration::from_millis(note_duration));
+            unsafe { delay_us((note_duration) * 1000); }
             continue;
         }
 
-        let freq = Rate::from_hz(note as u32);
-        let mut lstimer0 = ledc.timer::<LowSpeed>(timer::Number::Timer0);
-        lstimer0
-            .configure(timer::config::Config {
-                duty: timer::config::Duty::Duty10Bit,
-                clock_source: timer::LSClockSource::APBClk,
-                frequency: freq,
-            }).unwrap();
+        let divisor = 80_000_000u64 << 8 / note as u32 / 1 << 10; 
+        unsafe {
+            led_pwm_init(divisor as u32, 10, 512);
+            set_enable(buzzer);
+            pad_driver(buzzer);
+            init_io_mux(buzzer);
+            connect_gpio_to_ledc(buzzer);
+        }
 
-        let mut channel0 = ledc.channel(channel::Number::Channel0, buzzer.reborrow());
-        channel0
-            .configure(channel::config::Config {
-                timer: &lstimer0,
-                duty_pct: 50,
-                drive_mode: DriveMode::PushPull
-            }).unwrap();
-
-        blocking_delay(Duration::from_millis(note_duration - pause_duration));
-        channel0.set_duty(0).unwrap();
-        blocking_delay(Duration::from_millis(pause_duration));
+        unsafe {
+            delay_us((note_duration - pause_duration) * 1000);
+            set_duty(0);
+            delay_us((pause_duration) * 1000);
+        }
     } 
 
     loop {}
-}
-
-fn blocking_delay(duration: Duration) {
-    let delay_start = Instant::now();
-    while delay_start.elapsed() < duration {}
 }

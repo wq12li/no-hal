@@ -81,6 +81,27 @@ pub unsafe fn is_fading() -> bool {
     r & (1 << LEDC_DUTY_CHNG_END_CH0_INT_RAW) == 0
 }
 
+pub unsafe fn set_duty(duty: u32) {
+    // Shift by 4 because the low 3 bits are for fractional values.
+    let reg = (LED_PWM_BASE + LEDC_CH0_DUTY_REG) as *mut u32;
+    unsafe { reg.write_volatile(duty << 4); }
+
+    // Refer to "start_duty_without_fading" from HAL.
+    let reg = (LED_PWM_BASE + LEDC_CH0_CONF1_REG) as *mut u32;
+    let val =
+        1 << LEDC_DUTY_START_CH0
+        | 1 << LEDC_DUTY_INC_CH0
+        | 1 << LEDC_DUTY_NUM_CH0
+        | 1 << LEDC_DUTY_CYCLE_CH0
+        | 0 << LEDC_DUTY_SCALE_CH0;
+    unsafe { reg.write_volatile(val); }
+
+    // Update.
+    let reg = (LED_PWM_BASE + LEDC_CH0_CONF0_REG) as *mut u32;
+    let val = unsafe { reg.read_volatile() };
+    unsafe { reg.write_volatile(val | (1 << LEDC_PARA_UP_CH0)); }
+}
+
 // Uses Timer0 and PWM channel 0.
 pub unsafe fn led_pwm_init(divisor: u32, duty_res: u32, duty: u32) {
     // "Before using any of these peripherals, it is mandatory to enable the clock for the given peripheral and
