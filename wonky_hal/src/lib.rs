@@ -1,11 +1,15 @@
 #![no_std]
 
+const LEDC_LS_SIG_OUT0: u32 = 45;
+
 // GPIO register block.
 const GPIO_BASE: usize = 0x6000_4000;
     const GPIO_OUT_REG: usize = 0x04;
     const GPIO_OUT_W1TS: usize = 0x08;
     const GPIO_OUT_W1TC: usize = 0x0C;
     const GPIO_ENABLE_W1TS: usize = 0x24;
+    const GPIO_PIN_N_REG: usize = 0x74; // + 4*pin
+    const GPIO_FUNC_N_OUT_SEL_CFG_REG: usize = 0x0554;
 
 // IO mux register block.
 const IO_MUX_BASE: usize = 0x6000_9000;
@@ -103,11 +107,13 @@ pub unsafe fn led_pwm_init(divisor: u32, duty_res: u32, duty: u32) {
             | 1 << LEDC_SIG_OUT_EN_CH0  // Enable output signal. Need to connect to GPIO...
             | 1 << LEDC_PARA_UP_CH0;    // This bit updates most things in HPOINT, CONF0/1, and DUTY.
         unsafe { reg.write_volatile(val); }
-
-        // TODO: Connect PWM channel to output pin.
-
     }
+}
 
+// To the 0th channel, specifically.
+pub unsafe fn connect_gpio_to_ledc(gpio: usize) {
+    let reg = (GPIO_BASE + GPIO_FUNC_N_OUT_SEL_CFG_REG + 4 * gpio) as *mut u32;
+    unsafe { reg.write_volatile(LEDC_LS_SIG_OUT0); }
 }
 
 pub unsafe fn init() {
@@ -180,7 +186,7 @@ pub unsafe fn set_enable(gpio: usize) {
 
 // Probably unnecessary, because it looks like 0 is the default?
 pub unsafe fn pad_driver(gpio: usize) {
-    let reg = (GPIO_BASE + 0x74 + 4 * gpio) as *mut u32;
+    let reg = (GPIO_BASE + GPIO_PIN_N_REG + 4 * gpio) as *mut u32;
     unsafe { reg.write_volatile(0); }
 }
 
@@ -201,8 +207,9 @@ pub unsafe fn init_io_mux(gpio: usize) {
     // 2: 20 mA
     // 3: 40 mA
     
-    // Turn off FUN_WPD (bit 7), FUN_WPU (bit 8), and set drive strength (10-11)
-    unsafe {reg.write_volatile(2 << 10);}
+    // Turn off FUN_WPD (bit 7), FUN_WPU (bit 8), and set drive strength (10-11);
+    // also set MCU_SEL (12-14) to 1 (aka GPIO function)
+    unsafe { reg.write_volatile(1 << 12 | 2 << 10); }
 }
 
 pub unsafe fn read_gpio(gpio: usize) -> bool {
