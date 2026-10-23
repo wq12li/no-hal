@@ -12,17 +12,9 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::DriveMode;
 use esp_hal::main;
-use esp_hal::time::Rate;
-// use log::info;
-
-use esp_hal::ledc::LSGlobalClkSource;
-use esp_hal::ledc::channel::ChannelIFace;
-use esp_hal::ledc::timer::TimerIFace;
-use esp_hal::ledc::{Ledc, LowSpeed, channel, timer};
+use wonky_hal::*;
 
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -38,6 +30,7 @@ fn main() -> ! {
     // generator version: 1.3.0
     // generator parameters: --chip esp32c3 -o esp32c3-mini-1 -o unstable-hal
 
+    esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -56,31 +49,22 @@ fn main() -> ! {
     let _ = peripherals.GPIO16;
     let _ = peripherals.GPIO17;
 
-    let led = peripherals.GPIO10;
+    let led = 10;
 
-    let mut ledc = Ledc::new(peripherals.LEDC);
-
-    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-
-    let mut lstimer0 = ledc.timer::<LowSpeed>(timer::Number::Timer0);
-
-    lstimer0.configure(timer::config::Config {
-        duty: timer::config::Duty::Duty5Bit,
-        clock_source: timer::LSClockSource::APBClk,
-        frequency: Rate::from_khz(24)
-    }).unwrap();
-
-    let mut channel0 = ledc.channel(channel::Number::Channel0, led);
-    channel0.configure(channel::config::Config { 
-        timer: &lstimer0, 
-        duty_pct: 10, 
-        drive_mode: DriveMode::PushPull})
-    .unwrap();
+    unsafe {
+        led_pwm_init(26666, 5, 0);
+        set_enable(led);
+        pad_driver(led);
+        init_io_mux(led);
+        connect_gpio_to_ledc(led);
+    }
 
     loop {
-        channel0.start_duty_fade(0, 100, 1000).unwrap();
-        while channel0.is_duty_fade_running() {}
-        channel0.start_duty_fade(100, 0, 1000).unwrap();
-        while channel0.is_duty_fade_running() {}
+        unsafe {
+            fade(0, true, 774, 1, 31);
+            while is_fading() {};
+            fade(31, false, 774, 1, 31);
+            while is_fading() {};
+        }
     }
 }

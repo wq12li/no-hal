@@ -656,8 +656,11 @@ name = "fader"
 version = "0.1.0"
 dependencies = [
  "critical-section",
+ "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
+ "esp-println",
+ "log",
  "wonky_hal",
 ]
 

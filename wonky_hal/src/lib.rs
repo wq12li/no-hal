@@ -35,7 +35,10 @@ const LED_PWM_BASE: usize = 0x6001_9000;
     const LEDC_CONF_REG: usize = 0xD0;
         // const LEDC_APB_CLK_SEL: usize = 0;
     const LEDC_CH0_HPOINT_REG: usize = 0x04; 
-    const LEDC_DUTY_CH0: usize = 0x08; 
+    const LEDC_CH0_DUTY_REG: usize = 0x08; 
+    const LEDC_INT_RAW_REG: usize = 0xC0;
+        const LEDC_DUTY_CHNG_END_CH0_INT_RAW: usize = 4;
+    const LEDC_INT_CLR_REG: usize = 0xCC; 
 
 // System timer register block.
 const SYSTIMER_BASE: usize = 0x6002_3000;
@@ -48,6 +51,35 @@ const SYSTEM_BASE: usize = 0x600C_0000;
     const SYSTEM_PERIP_RST_EN0_REG: usize = 0x18;
         const SYSTEM_LEDC_RST: usize = 11; // Bit index.
 
+pub unsafe fn fade(start: u32, inc: bool, cycle: u32, scale: u32, num: u32) {
+    let reg = (LED_PWM_BASE + LEDC_CH0_DUTY_REG) as *mut u32;
+    unsafe { reg.write_volatile(start << 4); }
+
+    // Clear DUTY_CHNG_END for channel 0.
+    let reg = (LED_PWM_BASE + LEDC_INT_CLR_REG) as *mut u32;
+    unsafe { reg.write_volatile(1 << 4); }
+
+    // Set up fade via CONF1.
+    let reg = (LED_PWM_BASE + LEDC_CH0_CONF1_REG) as *mut u32;
+    let val =
+        1 << LEDC_DUTY_START_CH0
+        | cycle << LEDC_DUTY_CYCLE_CH0
+        | (inc as u32) << LEDC_DUTY_INC_CH0
+        | scale << LEDC_DUTY_SCALE_CH0
+        | num << LEDC_DUTY_NUM_CH0;
+    unsafe { reg.write_volatile(val); }
+
+    // Update via CONF0.
+    let reg = (LED_PWM_BASE + LEDC_CH0_CONF0_REG) as *mut u32;
+    let current = unsafe { reg.read_volatile() };
+    unsafe { reg.write_volatile(current | (1 << LEDC_PARA_UP_CH0)); }
+}
+
+pub unsafe fn is_fading() -> bool {
+    let reg = (LED_PWM_BASE + LEDC_INT_RAW_REG) as *mut u32;
+    let r = unsafe { reg. read_volatile() };
+    r & (1 << LEDC_DUTY_CHNG_END_CH0_INT_RAW) == 0
+}
 
 // Uses Timer0 and PWM channel 0.
 pub unsafe fn led_pwm_init(divisor: u32, duty_res: u32, duty: u32) {
@@ -88,7 +120,7 @@ pub unsafe fn led_pwm_init(divisor: u32, duty_res: u32, duty: u32) {
         unsafe { reg.write_volatile(0); }
         
         // Shift by 4 because the low 3 bits are for fractional values.
-        let reg = (LED_PWM_BASE + LEDC_DUTY_CH0) as *mut u32;
+        let reg = (LED_PWM_BASE + LEDC_CH0_DUTY_REG) as *mut u32;
         unsafe { reg.write_volatile(duty << 4); }
 
         // Refer to "start_duty_without_fading" from HAL.
