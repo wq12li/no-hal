@@ -169,17 +169,86 @@ pub unsafe fn connect_gpio_to_ledc(gpio: usize) {
     unsafe { reg.write_volatile(LEDC_LS_SIG_OUT0); }
 }
 
-pub unsafe fn init() {
-    // Skipping some stuff here from the HAL; presumably it's to be more generic
-    // but they don't seem relevant to the esp32c3.
-    // - pre_init() call; is empty for esp32c3
-    // - branch predictor init
-    // - something about making sure the stack pointer is in range?
-    //   - don't quite understand this one but it seems more like an assertion than a thing that does something
-    // - stack guard monitoring
-    //   - sets a breakpoint, apparently
+// what is that init function doing
+pub fn init() {
+    // ?
+    crate::soc::ensure_stack_pointer_in_range();
+
+    // Sets watchpoint (breakpoint?)
+    // This is pretty much a wrapper around debugger::set_stack_watchpoint(),
+    // but called with an argument __stack_chk_guard. The argument seems to appear out of thin air,
+    // but the two leading underscores and the static extern "C" around it imply it's some special value;
+    // namely it seems to be a stack canary: https://gcc.gnu.org/onlinedocs/gcc-4.2.1//gccint/Stack-Smashing-Protection.html
+    //
+    // The watchpoint setting in the function is done with inline assembly through the csrw instruction, which writes
+    // to the CSR (control and status) registers and I guess does stuff that makes it work.
+    // https://www2.eecs.berkeley.edu/Pubs/TechRpts/2015/Archive/EECS-2015-49.pdf
+    //
+    // Also, the implementation talks about a "NAPOT_MATCH", where NAPOT seems to stand for naturally-aligned powers of two
+    // (https://danielmangum.com/risc-v-tips/2021-11-18-pmp-naturally-aligned-powers-of-two/), but I think that's enough
+    // of a rabbit hole for now.
+    //
+    // _Probably_ it's not needed for this wonky HAL which is super developer-unfriendly already.
+    //
+    // crate::soc::enable_main_stack_guard_monitoring();
+
+    // Disables every peripheral by clearing their corresponding EN bits in the SYSTEM_PERIP_CLK_EN0_REG register,
+    // _except_ for SYSTIMER, TIMG0, UART0, UART_MEM, and USB_DEVICE.
+    // Said bits are SYSTEM_SYSTIMER_CLK_EN, SYSTEM_TIMERGROUP_CLK_EN, SYSTEM_UART_CLK_EN, SYSTEM_UART_MEM_CLK_EN, and SYSTEM_USB_DEVICE_CLK_EN.
+    //
+    // Normally, enabling/disabling of peripherals is done in accordance with a reference counter for each peripheral.
+    // Some runtime checks are done to ensure that the reference count can't go below 0.
+    // The bit-setting is normally unsafe because of potential race conditions, but this is guarded against by a
+    // non-reentrant mutex that panics if it's called reentrantly.
+    //
+    // For some reason the disabling done in this function is done "forced", in that it does not update the reference counts
+    // (other than with the five peripherals that are kept enabled, which get a +1).
+    // I guess this is because at the beginning of the program when the ref counting values are set up, you don't know
+    // whether or not the peripherals are enabled yet or not, and all the refcounts are 0. So you disable everything to make
+    // sure that your refcounting is consistent with the actual state of the system.
+    //
+    // Anyway presumably the reason for all this disabling is dynamic power consumption (https://anysilicon.com/the-ultimate-guide-to-clock-gating/),
+    // but I guess I don't have to worry about all that in this abomination, so it's probably ok to just leave
+    // all peripherals receiving those clock signals between programs.
+    //
+    // system::disable_peripherals();
+
+    // The take() function seems to just exist for safety reasons, to guarantee that
+    // there is only one instance of the peripherals. Calling it involves a lock and
+    // a static mut bool that makes sure it's not called twice.
     // 
+    // Internally it calls steal() which is the same thing but just lets you have multiple
+    // copies of things the good old fashioned way.
+    //
+    // Since we are choosing to live life dangerously it doesn't do anything useful.
+    //
+    // let mut peripherals = Peripherals::take();
+
+    Clocks::init(config.clock_config());
+
+    // RTC domain must be enabled before we try to disable
+    let mut rtc = crate::rtc_cntl::Rtc::new(peripherals.LPWR.reborrow());
+
+    crate::rtc_cntl::sleep::RtcSleepConfig::base_settings(&rtc);
+
+    // Disable watchdog timers
+    rtc.swd.disable();
+
+    rtc.rwdt.disable();
+
+    crate::timer::timg::Wdt::<crate::peripherals::TIMG0<'static>>::new().disable();
+
+    crate::timer::timg::Wdt::<crate::peripherals::TIMG1<'static>>::new().disable();
+
+    crate::time::implem::time_init();
+
+    crate::gpio::interrupt::bind_default_interrupt_handler();
+
+    unsafe {
+        esp_rom_sys::init_syscall_table();
+    }
 }
+
 
 // This is slightly more hairy than expected because the
 // counter might wrap around.
