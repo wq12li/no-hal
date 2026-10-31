@@ -224,16 +224,37 @@ pub fn init() {
     //
     // let mut peripherals = Peripherals::take();
 
+    // The default config this is called with is a 160 MHz CPU clock, which is the maximum frequency
+    // according to section 1.2. Apparently the default CPU clock is 20 MHz (section 6.2.4.1),
+    // but this isn't even an option in the HAL.
+    //
+    // RTC is never defined in the manual, but it's probably this? https://en.wikipedia.org/wiki/Real-time_clock
+    // The Wikipedia article mentions low power consumption, which is in line with the idea that the RTC stuff
+    // is "slow speed clocks for low-power devices" (6.2.3).
+    //
+    // Low-power management (Section 9.3, pg 220) indicates RTC as a power domain containing the
+    // power management unit (PMU).
+    //
+    // Somewhat confusingly RTC seems to sometimes be referred to as RC instead
+    // (pg. 901 revision history: RTC_CLK renamed as RC_SLOW_CLK).
+    //
+    // In any case a huge number of register manipulations follow; need to figure out what they do.
     Clocks::init(config.clock_config());
 
-    // RTC domain must be enabled before we try to disable
+    // This line doesn't seem to do anything computation; just safety stuff.
     let mut rtc = crate::rtc_cntl::Rtc::new(peripherals.LPWR.reborrow());
 
+    // Huge number of register manipulations here; probably to enable RTC power domain.
     crate::rtc_cntl::sleep::RtcSleepConfig::base_settings(&rtc);
 
-    // Disable watchdog timers
+    // Section 12.1:
+    // "Watchdog timers are hardware timers used to detect and recover from malfunctions. They must be
+    //  periodically fed (reset) to prevent a timeout. A system/software that is behaving unexpectedly (e.g. is stuck in
+    //  a software loop or in overdue events) will fail to feed the watchdog thus trigger a watchdog timeout."
+    //
+    // "Super watchdog": Analog watchdog timer.
     rtc.swd.disable();
-
+    // "RTC watchdog timer": Digital watchdog timer.
     rtc.rwdt.disable();
 
     crate::timer::timg::Wdt::<crate::peripherals::TIMG0<'static>>::new().disable();
