@@ -51,6 +51,23 @@ const SYSTEM_BASE: usize = 0x600C_0000;
     const SYSTEM_PERIP_RST_EN0_REG: usize = 0x18;
         const SYSTEM_LEDC_RST: usize = 11; // Bit index.
 
+// Low-power management, like RTC and stuff.
+const LPWR_BASE: usize = 0x6000_8000;
+    const RTC_CNTL_WDTCONFIG0_REG: usize = 0x90;
+        const RTC_CNTL_WDT_EN: usize = 31;
+    const RTC_CNTL_WDTWPROTECT_REG: usize = 0xA8;
+    const RTC_CNTL_SWD_CONF_REG: usize = 0xAC;
+        const RTC_CNTL_SWD_AUTO_FEED_EN: usize = 31;
+    const RTC_CNTL_SWD_WPROTECT_REG: usize = 0xB0;
+
+// Timer groups.
+const TIMG0_BASE: usize = 0x6001_F000;
+const TIMG1_BASE: usize = 0x6002_0000;
+    // These offsets are the same across both timer groups.
+    const TIMG_WDTWPROTECT_REG: usize = 0x64;
+    const TIMG_WDTCONFIG0_REG: usize = 0x48;
+        const TIMG_WDT_EN: usize = 31;
+
 pub unsafe fn fade(start: u32, inc: bool, cycle: u32, scale: u32, num: u32) {
     let reg = (LED_PWM_BASE + LEDC_CH0_DUTY_REG) as *mut u32;
     unsafe { reg.write_volatile(start << 4); }
@@ -241,8 +258,9 @@ pub fn init() {
     // In any case a huge number of register manipulations follow; need to figure out what they do.
     Clocks::init(config.clock_config());
 
-    // This line doesn't seem to do anything computation; just safety stuff.
-    let mut rtc = crate::rtc_cntl::Rtc::new(peripherals.LPWR.reborrow());
+    // This line doesn't seem to do any computation; just makes a struct, with syntax being safety sugar I guess.
+    //
+    // let mut rtc = crate::rtc_cntl::Rtc::new(peripherals.LPWR.reborrow());
 
     // Huge number of register manipulations here; probably to enable RTC power domain.
     crate::rtc_cntl::sleep::RtcSleepConfig::base_settings(&rtc);
@@ -252,19 +270,82 @@ pub fn init() {
     //  periodically fed (reset) to prevent a timeout. A system/software that is behaving unexpectedly (e.g. is stuck in
     //  a software loop or in overdue events) will fail to feed the watchdog thus trigger a watchdog timeout."
     //
-    // "Super watchdog": Analog watchdog timer.
-    rtc.swd.disable();
-    // "RTC watchdog timer": Digital watchdog timer.
-    rtc.rwdt.disable();
+    // The ESP32C3 has four of them:
+    // - "Super watchdog": An analog watchdog timer.
+    // - "RTC watchdog timer": A digital watchdog timer.
+    // - "Main system watchdog timer 0" (MWDT0): A digital watchdog timer; is in timer group 0 (TIMG0).
+    // - "Main system watchdog timer 1" (MWDT1): Is in timer group 1 (TIMG1).
+    //
+    // Also: https://www.digikey.com/en/articles/a-designers-guide-to-watchdog-timers
+    // Amusingly the article also refers to resetting the timers as "tickling" them and "kick dog."
+    //
+    // Anyway, the HAL seems to disable all the watchdog timers in its init function. Presumably so that the programmer
+    // doesn't have to worry about it, but is that a good idea? Don't know.
+    //
+    // 12.2.2.4: "During flash booting process, MWDT in timer group 0 (see Figure 11.1-1 Timer Units within Groups), as well as
+    //            RWDT, are automatically enabled. Stage 0 for the enabled MWDT is automatically configured to reset the
+    //            system upon expiry, known as core reset. Likewise, stage 0 for RWDT is configured to system reset, which
+    //            resets the main system and RTC when it expires."
+    //
+    //            ^ This probably explains why the board repeatedly disconnects and displays weird behavior after flashing a program
+    //              with the init function removed, even though an existing init function from a previous flash should have disabled
+    //              those timers. Presumably the disconnections happen when the CPU/peripherals are reset.
+    //
+    // WDTs need to have a "key" written into a register before they can be manipulated, to prevent bugs from accidentally messing
+    // with their behavior. The one analog watchdog timer has a write key of 0x8F1D312A, while the remaining (digital) timers have
+    // a key of 0x50D83AA1.
+    //
+    // SWD.
+    // Interestingly, the HAL implementation doesn't actually _disable_ SWD here, it
+    // just sets it to "auto-feed" to make it feed itself on interrupts. Not entirely
+    // sure what the practical differences are.
+    let reg = (LPWR_BASE + RTC_CNTL_SWD_WPROTECT_REG) as *mut u32;
+    unsafe { reg.write_volatile(0x8F1D312A);}
+    {
+        let reg = (LPWR_BASE + RTC_CNTL_SWD_CONF_REG) as *mut u32;
+        unsafe { reg.write_volatile(reg.read_volatile() | (1 << RTC_CNTL_SWD_AUTO_FEED_EN)); }
+    }
+    unsafe { reg.write_volatile(0);}
+    //
+    // RWDT.
+    // Technically the HAL sets the entire register to 0 and not just the enable bit, but this should
+    // probably work fine.
+    let reg = (LPWR_BASE + RTC_CNTL_WDTWPROTECT_REG) as *mut u32;
+    unsafe { reg.write_volatile(0x50D83AA1);}
+    {
+        let reg = (LPWR_BASE + RTC_CNTL_WDTCONFIG0_REG) as *mut u32;
+        unsafe { reg.write_volatile(reg.read_volatile() & (0 << RTC_CNTL_WDT_EN)); }
+    }
+    unsafe { reg.write_volatile(0);}
+    //
+    // MWDT0.
+    let reg = (TIMG0_BASE + TIMG_WDTWPROTECT_REG) as *mut u32;
+    unsafe { reg.write_volatile(0x50D83AA1);}
+    {
+        let reg = (TIMG0_BASE + TIMG_WDTCONFIG0_REG) as *mut u32;
+        unsafe { reg.write_volatile(reg.read_volatile() & (0 << TIMG_WDT_EN)); }
+    }
+    unsafe { reg.write_volatile(0);}
+    //
+    // MWDT1.
+    let reg = (TIMG1_BASE + TIMG_WDTWPROTECT_REG) as *mut u32;
+    unsafe { reg.write_volatile(0x50D83AA1);}
+    {
+        let reg = (TIMG1_BASE + TIMG_WDTCONFIG0_REG) as *mut u32;
+        unsafe { reg.write_volatile(reg.read_volatile() & (0 << TIMG_WDT_EN)); }
+    }
+    unsafe { reg.write_volatile(0);}
 
-    crate::timer::timg::Wdt::<crate::peripherals::TIMG0<'static>>::new().disable();
-
-    crate::timer::timg::Wdt::<crate::peripherals::TIMG1<'static>>::new().disable();
-
-    crate::time::implem::time_init();
+    // This call is just a wrapper around "init_timestamp_scaler," which initializes a static mut u32
+    // which is subsequently used to convert between SYSTIMER ticks and microseconds.
+    // The code for this repo just uses tick values directly so it's not needed.
+    //
+    // crate::time::implem::time_init();
 
     crate::gpio::interrupt::bind_default_interrupt_handler();
 
+    // This assigns to a C static mut pointer to `syscall_table_ptr`.
+    // Need to figure out where this is supposed to be documented...
     unsafe {
         esp_rom_sys::init_syscall_table();
     }
