@@ -188,14 +188,21 @@ pub unsafe fn connect_gpio_to_ledc(gpio: usize) {
 
 // what is that init function doing
 pub fn init() {
-    // ?
-    crate::soc::ensure_stack_pointer_in_range();
-
+    // The HAL starts with a check for stack pointer bounds, which I don't think I've ever seen triggered,
+    // but might as well.
+    unsafe extern "C" {
+        static _stack_end_cpu0: u32;
+        static _stack_start_cpu0: u32;
+    }
+    let current_sp: usize;
+    unsafe { core::arch::asm!("mv {0}, sp", out(reg) current_sp); }
+    assert!(current_sp > &raw const _stack_end_cpu0 as usize
+         && current_sp < &raw const _stack_start_cpu0 as usize);
+    
     // Sets watchpoint (breakpoint?)
     // This is pretty much a wrapper around debugger::set_stack_watchpoint(),
-    // but called with an argument __stack_chk_guard. The argument seems to appear out of thin air,
-    // but the two leading underscores and the static extern "C" around it imply it's some special value;
-    // namely it seems to be a stack canary: https://gcc.gnu.org/onlinedocs/gcc-4.2.1//gccint/Stack-Smashing-Protection.html
+    // but called with an argument __stack_chk_guard, which seems to be a stack canary bound to a variable from C:
+    // https://gcc.gnu.org/onlinedocs/gcc-4.2.1//gccint/Stack-Smashing-Protection.html
     //
     // The watchpoint setting in the function is done with inline assembly through the csrw instruction, which writes
     // to the CSR (control and status) registers and I guess does stuff that makes it work.
