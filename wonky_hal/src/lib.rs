@@ -262,15 +262,21 @@ pub fn init() {
     // Somewhat confusingly RTC seems to sometimes be referred to as RC instead
     // (pg. 901 revision history: RTC_CLK renamed as RC_SLOW_CLK).
     //
-    // In any case a huge number of register manipulations follow; need to figure out what they do.
-    Clocks::init(config.clock_config());
+    // TODO: In any case a huge number of register manipulations follow; need to figure out what they do.
+    // Notably, this function eventually does stuff with "regi2c," which is apparently an undocumented feature of
+    // the MCU that is used by ESP-IDF.
+    //
+    // Clocks::init(config.clock_config());
 
     // This line doesn't seem to do any computation; just makes a struct, with syntax being safety sugar I guess.
     //
     // let mut rtc = crate::rtc_cntl::Rtc::new(peripherals.LPWR.reborrow());
 
-    // Huge number of register manipulations here; probably to enable RTC power domain.
-    crate::rtc_cntl::sleep::RtcSleepConfig::base_settings(&rtc);
+    // TODO: Huge number of register manipulations here; probably to enable RTC power domain.
+    // This line also ends up using "regi2c," and also accesses a number of seemingly undocumented registers within the
+    // RTC register block (timer3, timer5, etc.) so maybe ignore for now.
+    //
+    // crate::rtc_cntl::sleep::RtcSleepConfig::base_settings(&rtc);
 
     // Section 12.1:
     // "Watchdog timers are hardware timers used to detect and recover from malfunctions. They must be
@@ -349,27 +355,29 @@ pub fn init() {
     //
     // crate::time::implem::time_init();
 
-    crate::gpio::interrupt::bind_default_interrupt_handler();
+    // TODO:
+    // crate::gpio::interrupt::bind_default_interrupt_handler();
 
-    // This assigns to a C static mut pointer to `syscall_table_ptr`.
-    // Need to figure out where this is supposed to be documented...
-    unsafe {
-        esp_rom_sys::init_syscall_table();
-    }
+    // TODO: This assigns to a C static mut pointer called `syscall_table_ptr`.
+    // Seems like it is maybe a feature of the IDF.
+    //
+    // unsafe {
+    //     esp_rom_sys::init_syscall_table();
+    // }
 }
 
 
 // This is slightly more hairy than expected because the
 // counter might wrap around.
 // Not sure if this is really as robust as the HAL version.
-pub unsafe fn delay_ticks(ticks: u64) {
-    let mut start = unsafe { read_unit0_count() };
+pub fn delay_ticks(ticks: u64) {
+    let mut start = read_unit0_count();
     let mut end = start.wrapping_add(ticks);
 
     if start > end { core::mem::swap(&mut start, &mut end);}
 
     loop {
-        let current = unsafe { read_unit0_count() };
+        let current = read_unit0_count();
         if current >= end {
             return;
         }
@@ -377,28 +385,33 @@ pub unsafe fn delay_ticks(ticks: u64) {
 }
 
 // According to 10.3, average frequency is 16 MHz, so each tick is 1/16 us.
-pub unsafe fn delay_us(us: u64) {
-    unsafe { delay_ticks(us * 16) };
+pub fn delay_us(us: u64) {
+    delay_ticks(us * 16);
 }
 
-pub unsafe fn read_unit0_count() -> u64 {
+pub fn read_unit0_count() -> u64 {
     // man why is the clock stuff so arcane
 
     // Section 10.5
     const SYSTIMER_TIMER_UNIT0_OP_REG: usize = SYSTIMER_BASE + 0x04;
     let reg = SYSTIMER_TIMER_UNIT0_OP_REG as *mut u32;
 
-    // "update": reads count into VALUE_HI and VALUE_LO
+    // SYSTIMER_TIMER_UNIT0_UPDATE: reads count into VALUE_HI and VALUE_LO
+    // Safety: WT field.
     unsafe { reg.write_volatile(1 << 30); }
 
     // "valid": poll until true, meaning the update finished
     loop {
+        // Safety: R/SS field; in other words, automatically set by hardware.
         let valid = unsafe { reg.read_volatile() & (1 << 29) != 0 };
         if valid { break; }
     }
     
+    // Safety: Requires that the update is done before these reads, which happens
+    //         earlier in this function.
     // NOTE: The HAL accomodates for an edge case here where an interrupt happens
-    // between reading hi and lo, but lazy.
+    //       between reading hi and lo, but lazy.
+    //       In some sense that means this is currently _actually_ kinda unsafe.
     let hi = (SYSTIMER_BASE + 0x40) as *mut u32;
     let lo = (SYSTIMER_BASE + 0x44) as *mut u32;
 
