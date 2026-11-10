@@ -308,6 +308,10 @@ pub fn init() {
     // with their behavior. The one analog watchdog timer has a write key of 0x8F1D312A, while the remaining (digital) timers have
     // a key of 0x50D83AA1.
     //
+    // Safety: The main concern here is with respect to ownership of peripherals, and the HAL seems to use reference counting
+    //         to enforce that; but it seems sort of okay if the init function is guaranteed to be called at the beginning of the 
+    //         program.
+    //
     // SWD.
     // Interestingly, the HAL implementation doesn't actually _disable_ SWD here, it
     // just sets it to "auto-feed" to make it feed itself on interrupts. Not entirely
@@ -421,20 +425,22 @@ pub fn read_unit0_count() -> u64 {
     (hi as u64) << 32 | lo as u64
 }
 
-pub unsafe fn set_enable(gpio: usize) {
+pub fn set_enable(gpio: usize) {
     // Normally configuring GPIO_FUNCx_OUT_SEL_CFG_REG might be needed here,
     // but not for "simple GPIO output" (5.5.3).
+    // Safety: Address is real.
     let reg = (GPIO_BASE + GPIO_ENABLE_W1TS) as *mut u32;
     unsafe { reg.write_volatile(1 << gpio); }
 }
 
 // Probably unnecessary, because it looks like 0 is the default?
-pub unsafe fn pad_driver(gpio: usize) {
+pub fn pad_driver(gpio: usize) {
+    // Safety: Address is real.
     let reg = (GPIO_BASE + GPIO_PIN_N_REG + 4 * gpio) as *mut u32;
     unsafe { reg.write_volatile(0); }
 }
 
-pub unsafe fn init_io_mux(gpio: usize) {
+pub fn init_io_mux(gpio: usize) {
     let io_mux_gpio_reg: usize = IO_MUX_BASE + 0x04 + 4 * gpio;
     let reg = (io_mux_gpio_reg) as *mut u32;
     
@@ -453,20 +459,24 @@ pub unsafe fn init_io_mux(gpio: usize) {
     
     // Turn off FUN_WPD (bit 7), FUN_WPU (bit 8), and set drive strength (10-11);
     // also set MCU_SEL (12-14) to 1 (aka GPIO function)
+    // Safety: Address is real.
     unsafe { reg.write_volatile(1 << 12 | 2 << 10); }
 }
 
-pub unsafe fn read_gpio(gpio: usize) -> bool {
+pub fn read_gpio(gpio: usize) -> bool {
+    // Safety: Address is real.
     let out = (GPIO_BASE + GPIO_OUT_REG) as *mut u32;
     unsafe { out.read_volatile() & (1 << gpio) != 0 }
 }
 
-pub unsafe fn set_high(gpio: usize) {
+pub fn set_high(gpio: usize) {
+    // Safety: Address is real.
     let w1ts = (GPIO_BASE + GPIO_OUT_W1TS) as *mut u32;
     unsafe { w1ts.write_volatile(1 << gpio); }
 }
 
-pub unsafe fn set_low(gpio: usize) {
+pub fn set_low(gpio: usize) {
+    // Safety: Address is real.
     let w1tc = (GPIO_BASE + GPIO_OUT_W1TC) as *mut u32;
     unsafe { w1tc.write_volatile(1 << gpio); }
 }
