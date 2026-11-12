@@ -94,7 +94,7 @@ pub unsafe fn fade(start: u32, inc: bool, cycle: u32, scale: u32, num: u32) {
 
 pub unsafe fn is_fading() -> bool {
     let reg = (LED_PWM_BASE + LEDC_INT_RAW_REG) as *mut u32;
-    let r = unsafe { reg. read_volatile() };
+    let r = unsafe { reg.read_volatile() };
     r & (1 << LEDC_DUTY_CHNG_END_CH0_INT_RAW) == 0
 }
 
