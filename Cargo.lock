@@ -49,6 +49,7 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
+ "esp-riscv-rt",
  "esp32c3 0.34.0",
  "log",
  "wonky_hal",

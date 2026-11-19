@@ -25,3 +25,4 @@ esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
 esp32c3 = { version = "0.34.0", features = ["critical-section"] }
 
 wonky_hal = { path = "../wonky_hal" }
+esp-riscv-rt = "0.14.0"

@@ -7,8 +7,10 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-use esp_backtrace as _;
-use esp_hal::main;
+#[panic_handler]
+fn panic(_: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
 
 use wonky_hal::*;
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -19,7 +21,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
     clippy::large_stack_frames,
     reason = "it's not unusual to allocate larger buffers etc. in main"
 )]
-#[main]
+#[esp_hal::__macro_implementation::__entry]
 fn main() -> ! {
     // generator version: 1.3.0
     // generator parameters: --chip esp32c3 -o esp32c3-mini-1 -o unstable-hal -o log -o esp-backtrace

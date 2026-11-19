@@ -12,7 +12,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-use esp_hal::clock::CpuClock;
 use esp_hal::main;
 use wonky_hal::*;
 
@@ -30,10 +29,7 @@ fn main() -> ! {
     // generator version: 1.3.0
     // generator parameters: --chip esp32c3 -o esp32c3-mini-1 -o unstable-hal
 
-    esp_println::logger::init_logger_from_env();
-
-    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
+    init();
 
     // The following pins are used to bootstrap the chip. They are available
     // for use, but check the datasheet of the module for more information on them.
